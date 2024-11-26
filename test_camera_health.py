@@ -13,20 +13,20 @@ class ResultCallback(CallbackBase):
         super(ResultCallback, self).__init__()
         self.results = []
 
-    def v2_runner_on_ok(self, result, **kwargs):
+    def runner_on_ok(self, host, res):
         """Handle successful results."""
-        host = result._host
-        task_result = result._result
-        self.results.append({'host': host.name, 'result': task_result})
+        host = res._host
+        task_result = res._result
+        self.results.append({'host': host.name, 'res': task_result})
 
-    def v2_runner_on_failed(self, result, **kwargs):
+    def runner_on_failed(self, host, res, ignore_errors=False):
         """Handle failed results."""
-        host = result._host
-        task_result = result._result
+        host = res._host
+        task_result = res._result
         self.results.append({'host': host.name, 'result': task_result, 'failed': True})
 
 
-def check_camera_device(hosts_file, target_host):
+def check_camera_device(hosts_file, target_host, expected_cameras=3):
     # Ansible 환경 설정
     loader = DataLoader()
     inventory = InventoryManager(loader=loader, sources=[hosts_file])
@@ -63,7 +63,9 @@ def check_camera_device(hosts_file, target_host):
     play = Play().load(play_source, variable_manager=variable_manager, loader=loader)
 
     # Task 실행
-    passwords = {}
+    passwords = {
+        'conn_pass': 'your_password_here'  # SSH 비밀번호
+    }
     results_callback = ResultCallback()  # Custom callback for capturing results
 
     tqm = None
@@ -72,7 +74,7 @@ def check_camera_device(hosts_file, target_host):
             inventory=inventory,
             variable_manager=variable_manager,
             loader=loader,
-            passwords=passwords,
+            passwords=passwords,  # 비밀번호 전달
             stdout_callback=results_callback  # Attach custom callback
         )
         tqm.run(play)
@@ -86,14 +88,29 @@ def check_camera_device(hosts_file, target_host):
         if 'failed' in result:
             print(f"Task Failed: {result['result']}")
         else:
-            if 'lsusb_output' in result['result']:
-                usb_devices = result['result']['lsusb_output']
-                print(f"USB Devices: {usb_devices}")
+            # Check for camera devices
+            lsusb_output = result['result'].get('stdout', '')
+            if lsusb_output:
+                # Filter for lines containing "Camera"
+                camera_devices = [
+                    line for line in lsusb_output.splitlines() if "Camera" in line
+                ]
+                num_detected_cameras = len(camera_devices)
+                print(f"Detected Cameras: {num_detected_cameras}")
+                print(f"Camera Details: {camera_devices}")
+
+                # Compare with expected cameras
+                if num_detected_cameras < expected_cameras:
+                    missing_cameras = expected_cameras - num_detected_cameras
+                    print(f"Warning: {missing_cameras} camera(s) not detected!")
+                else:
+                    print("All expected cameras detected!")
             else:
-                print(f"Result: {result['result']}")
+                print("No USB devices found.")
 
 # 실행
 if __name__ == "__main__":
     hosts_file = 'hosts'  # Ansible hosts 파일 경로
     target_host = '127.0.0.1'  # 타겟 호스트 이름
-    check_camera_device(hosts_file, target_host)
+    expected_cameras = 3  # 예상 카메라 드라이버 갯수
+    check_camera_device(hosts_file, target_host, expected_cameras)
