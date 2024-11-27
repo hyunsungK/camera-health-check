@@ -8,7 +8,7 @@ def count_cameras_remote(host, port, username, password, camera_prefix="/dev/cam
         ssh_client.connect(hostname=host, port=port, username=username, password=password)
 
         # 원격 명령 실행
-        command = "ls -al /dev | grep camera"
+        command = "ls -a /dev/camera* | grep camera"
         stdin, stdout, stderr = ssh_client.exec_command(command)
         
         # 명령 출력 읽기
